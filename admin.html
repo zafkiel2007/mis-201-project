@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>FormFix AI: Developer Workspace</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23B86E00'/%3E%3Ctext x='50' y='68' font-size='56' text-anchor='middle' fill='white'%3E%F0%9F%94%92%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" crossorigin="anonymous"></script>
+<style>
+:root{--bg:#EDF1F4;--card:#fff;--ink:#0E1B2A;--mut:#5B6B7B;--line:#D5DDE4;--acc:#1F5EFF;--onacc:#fff;--ok:#0B8F6B;--warn:#B86E00;--bad:#D92D3A}
+@media (prefers-color-scheme:dark){:root{--bg:#09121A;--card:#121E29;--ink:#E7EEF4;--mut:#93A4B4;--line:#23323F;--acc:#6D93FF;--onacc:#08111f;--ok:#32C79B;--warn:#E6A23C;--bad:#FF6370}}
+body{background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,sans-serif;margin:0}
+h1,h2,h3,.disp{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;letter-spacing:.01em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.btn{border:1px solid var(--line);border-radius:10px;padding:.5rem .9rem;font-weight:600;background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;gap:.4rem;align-items:center;justify-content:center}
+.btn:hover{border-color:var(--acc)}.btn:disabled{opacity:.45;cursor:not-allowed}.btn-s{padding:.3rem .65rem;font-size:.85rem}
+.btn-p,.tog[aria-pressed=true]{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
+.inp{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .75rem;background:var(--bg);color:var(--ink)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.mut{color:var(--mut)}.pill{border:1px solid currentColor;border-radius:99px;padding:.1rem .55rem;font-size:.75rem;font-weight:600;white-space:nowrap}
+</style>
+</head>
+<body>
+<!-- LOGIN -->
+<div id="gate" class="min-h-[80vh] grid place-items-center p-4">
+ <div class="card w-full max-w-sm p-6 text-center">
+  <div class="text-3xl" aria-hidden="true">🔒</div>
+  <h1 class="text-3xl">Developer sign in</h1>
+  <form id="pinF" class="space-y-3 mt-2">
+   <p class="mut text-sm">Step 1: enter the 4-digit PIN.</p>
+   <label class="sr-only" for="pin">4-digit PIN</label>
+   <input id="pin" class="inp text-center text-2xl" style="letter-spacing:.5em" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required>
+   <p id="pinE" class="text-sm hidden" style="color:var(--bad)" role="alert"></p>
+   <button class="btn btn-p w-full" type="submit">Continue</button>
+  </form>
+  <form id="authF" class="space-y-3 mt-2 text-left hidden">
+   <p class="mut text-sm text-center">Step 2: sign in to the database with your admin account.</p>
+   <div><label class="text-sm font-semibold" for="em">Email</label><input id="em" class="inp" type="email" autocomplete="username" required></div>
+   <div><label class="text-sm font-semibold" for="pw">Password</label><input id="pw" class="inp" type="password" autocomplete="current-password" required></div>
+   <p id="authE" class="text-sm hidden" style="color:var(--bad)" role="alert"></p>
+   <button class="btn btn-p w-full" type="submit">Sign in</button>
+  </form>
+  <p id="demoNote" class="mut text-xs mt-3 hidden">Demo mode: no Supabase keys set, so this dashboard only sees data from the user app in this same browser.</p>
+ </div>
+</div>
+
+<!-- APP -->
+<div id="app" hidden>
+ <header class="card" style="border-radius:0;border-width:0 0 1px"><div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+  <div class="mr-auto"><span class="disp text-2xl">FormFix AI</span> <span class="pill" style="color:var(--warn)">Developer workspace</span></div>
+  <span id="live" class="pill" style="color:var(--mut)">Connecting…</span>
+  <button class="btn btn-s" id="bLock">🔒 Sign out</button></div></header>
+ <main class="max-w-6xl mx-auto p-4 pb-10">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-center" id="stats"></div>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3"><h1 class="text-3xl">Review queue</h1>
+   <div class="flex flex-wrap gap-1.5 items-center"><div id="filters" class="flex flex-wrap gap-1.5"></div><label class="sr-only" for="srch">Search</label><input id="srch" class="inp" style="width:11rem" placeholder="Search…"></div></div>
+  <div id="queue" class="grid md:grid-cols-2 gap-3" aria-live="polite"></div>
+  <div class="card p-4 mt-6"><h2 class="text-2xl">Exercises live in the user app</h2><ul id="exs" class="text-sm mt-2"></ul></div>
+ </main>
+</div>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 card px-4 py-2 text-sm font-semibold hidden z-30" style="bottom:calc(env(safe-area-inset-bottom,0px) + 1rem)" role="status"></div>
+
+<script>
+/* ===== CONFIG: paste your Supabase project values here (Project Settings, API) ===== */
+const SUPABASE_URL="https://luzuflcmlekurbfhdmux.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_0h84fepK4jHnMudYJTQCKA_HChsSOjc";
+/* ================================================================================ */
+const $=s=>document.querySelector(s);
+const esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}},sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.remove("hidden");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add("hidden"),3500)}
+const PIN="1234",CLOUD=!!(SUPABASE_URL&&SUPABASE_ANON_KEY&&window.supabase),sb=CLOUD?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+let subs=[],exs=[],filt="all",term="",chan=null,poll=null;
+
+/* ---- data layer ---- */
+const rid=()=>crypto.randomUUID?crypto.randomUUID():"x"+Date.now()+Math.random().toString(16).slice(2);
+const DB={
+ async subs(){if(CLOUD){const{data,error}=await sb.from("submissions").select("*").order("created_at",{ascending:false}).limit(500);if(error)throw error;return data}return ld("ff_subs",[])},
+ async exs(){if(CLOUD){const{data,error}=await sb.from("exercises").select("*").order("created_at");if(error)throw error;return data}return ld("ff_ex",[])},
+ async status(id,status){if(CLOUD){const{error}=await sb.from("submissions").update({status}).eq("id",id);if(error)throw error}else{const a=ld("ff_subs",[]),x=a.find(y=>y.id==id);if(x)x.status=status;sv("ff_subs",a)}},
+ async addEx(s){if(CLOUD){const{error}=await sb.from("exercises").insert({name:s.title,muscles:s.muscles||[],camera_angle:s.camera_angle,notes:s.notes,source_submission:s.id});if(error&&error.code!=="23505")throw error}
+  else{const a=ld("ff_ex",[]);if(!a.some(x=>x.name.toLowerCase()==s.title.toLowerCase()))a.push({id:rid(),name:s.title,muscles:s.muscles||[],camera_angle:s.camera_angle,notes:s.notes,source_submission:s.id,created_at:new Date().toISOString()});sv("ff_ex",a)}},
+ async delEx(id){if(CLOUD){const{error}=await sb.from("exercises").delete().eq("id",id);if(error)throw error}else sv("ff_ex",ld("ff_ex",[]).filter(x=>x.id!=id))}
+};
+
+/* ---- login: PIN (UI gate) then Supabase Auth (real protection) ---- */
+let fails=0,lockUntil=0;
+$("#pinF").onsubmit=async e=>{e.preventDefault();const er=$("#pinE");
+ if(Date.now()<lockUntil){er.textContent="Too many attempts. Try again in "+Math.ceil((lockUntil-Date.now())/1000)+" s.";er.classList.remove("hidden");return}
+ if($("#pin").value!==PIN){fails++;er.textContent="Wrong PIN.";if(fails>=3){lockUntil=Date.now()+30000;fails=0;er.textContent="Too many attempts. Locked for 30 s."}er.classList.remove("hidden");$("#pin").value="";return}
+ fails=0;$("#pin").value="";er.classList.add("hidden");
+ if(!CLOUD)return openApp();
+ const{data}=await sb.auth.getSession();if(data.session&&await isAdmin())return openApp();
+ $("#pinF").classList.add("hidden");$("#authF").classList.remove("hidden");$("#em").focus()};
+async function isAdmin(){const{data,error}=await sb.rpc("is_admin");return !error&&data===true}
+$("#authF").onsubmit=async e=>{e.preventDefault();const er=$("#authE"),b=e.submitter;b.disabled=true;er.classList.add("hidden");
+ const{error}=await sb.auth.signInWithPassword({email:$("#em").value.trim(),password:$("#pw").value});
+ if(error){er.textContent="Sign-in failed: "+error.message;er.classList.remove("hidden");b.disabled=false;return}
+ if(!(await isAdmin())){await sb.auth.signOut();er.textContent="This account isn’t on the admin list.";er.classList.remove("hidden");b.disabled=false;return}
+ $("#pw").value="";b.disabled=false;openApp()};
+async function openApp(){$("#gate").style.display="none";$("#app").hidden=false;if(!CLOUD)$("#live").textContent="Demo mode (this browser)";await load();subscribe()}
+async function lock(){if(chan&&CLOUD){sb.removeChannel(chan);chan=null}clearInterval(poll);if(CLOUD)await sb.auth.signOut();subs=[];exs=[];$("#queue").innerHTML="";$("#app").hidden=true;$("#gate").style.display="";$("#authF").classList.add("hidden");$("#pinF").classList.remove("hidden");$("#pin").focus()}
+$("#bLock").onclick=lock;
+
+/* ---- realtime ---- */
+function setLive(ok){const l=$("#live");l.textContent=ok?"● Live":"Offline: retrying";l.style.color=ok?"var(--ok)":"var(--bad)"}
+function subscribe(){clearInterval(poll);
+ if(CLOUD){chan=sb.channel("ff-admin").on("postgres_changes",{event:"*",schema:"public",table:"submissions"},p=>{if(p.eventType=="INSERT")toast("New "+(p.new.type=="bug"?"bug report":"exercise request")+": "+p.new.title);load()})
+  .on("postgres_changes",{event:"*",schema:"public",table:"exercises"},()=>load()).subscribe(st=>setLive(st==="SUBSCRIBED"));poll=setInterval(load,30000)}
+ else{addEventListener("storage",e=>{if(e.key&&e.key.startsWith("ff_"))load()});addEventListener("focus",load)}}
+async function load(){try{[subs,exs]=await Promise.all([DB.subs(),DB.exs()]);render()}catch(e){toast("Couldn’t load data: "+(e.message||e))}}
+
+/* ---- render ---- */
+const ST={new:["Needs review","warn"],approved:["Approved","ok"],resolved:["Resolved","ok"],declined:["Declined","mut"]};
+function render(){const n=f=>subs.filter(f).length;
+ $("#stats").innerHTML=[["Open bugs",n(x=>x.type=="bug"&&x.status=="new")],["Pending requests",n(x=>x.type=="exercise"&&x.status=="new")],["Resolved bugs",n(x=>x.type=="bug"&&x.status=="resolved")],["Exercises live",exs.length]].map(([l,v])=>`<div class="card p-3"><div class="disp text-4xl">${v}</div><div class="mut text-xs">${l}</div></div>`).join("");
+ $("#filters").innerHTML=[["all","All"],["new","Needs review"],["bug","Bugs"],["exercise","Exercise requests"]].map(([k,l])=>`<button class="btn btn-s tog" data-f="${k}" aria-pressed="${k==filt}">${l}</button>`).join("");
+ const t=term.toLowerCase(),L=subs.filter(x=>(filt=="all"||(filt=="new"?x.status=="new":x.type==filt))&&(!t||(x.title+" "+(x.body||"")+" "+(x.notes||"")).toLowerCase().includes(t)));
+ $("#queue").innerHTML=L.length?L.map(x=>{
+  const b=x.type=="bug"?`<p class="text-sm">${esc(x.body)}</p><p class="text-xs mut mt-1">Severity: ${esc(x.severity)}${x.context?`<br>Session: ${esc(x.context)}`:""}</p>`:`<p class="text-sm">Targets: ${esc((x.muscles||[]).join(", "))} · Camera: ${esc(x.camera_angle)}</p>${x.notes?`<p class="text-sm mut">${esc(x.notes)}</p>`:""}`;
+  const a=(k,l,c="")=>`<button class="btn btn-s ${c}" data-a="${k}" data-id="${esc(x.id)}">${l}</button>`;
+  const btn=x.type=="exercise"?(x.status=="approved"?a("unapprove","Remove from app"):x.status=="new"?a("approve","Approve","btn-p")+a("decline","Decline"):a("reopen","Reopen")):(x.status=="resolved"?a("reopen","Reopen"):a("resolve","Mark Resolved","btn-p"));
+  return`<article class="card p-4"><div class="flex justify-between gap-2 mb-1"><span class="pill" style="color:var(--${x.type=="bug"?"bad":"acc"})">${x.type=="bug"?"Bug":"Exercise request"}</span><span class="pill" style="color:var(--${ST[x.status][1]})">${ST[x.status][0]}</span></div><h2 class="text-2xl">${esc(x.title)}</h2>${b}<p class="text-xs mut my-2">${new Date(x.created_at).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</p><div class="flex flex-wrap gap-2">${btn}</div></article>`}).join(""):'<p class="mut">Nothing here yet. New submissions appear automatically.</p>';
+ $("#exs").innerHTML=exs.length?exs.map(x=>`<li class="flex justify-between gap-2 py-2 border-b" style="border-color:var(--line)"><span><b>${esc(x.name)}</b> <span class="mut">${esc((x.muscles||[]).join(", "))}</span></span><button class="btn btn-s" data-x="${esc(x.id)}">Remove</button></li>`).join(""):'<li class="mut">No custom exercises yet. Approve an exercise request to add one.</li>'}
+$("#filters").onclick=e=>{const b=e.target.closest("[data-f]");if(b){filt=b.dataset.f;render()}};
+$("#srch").oninput=e=>{term=e.target.value;render()};
+$("#queue").onclick=async e=>{const b=e.target.closest("[data-a]");if(!b||b.disabled)return;b.disabled=true;await act(b.dataset.id,b.dataset.a)};
+$("#exs").onclick=async e=>{const b=e.target.closest("[data-x]");if(!b||b.disabled)return;b.disabled=true;
+ try{const x=exs.find(y=>y.id==b.dataset.x);await DB.delEx(b.dataset.x);if(x&&x.source_submission)await DB.status(x.source_submission,"new");toast("Removed from the user app.")}catch(er){toast("Failed: "+(er.message||er))}await load()};
+async function act(id,a){const s=subs.find(x=>x.id==id);if(!s)return load();
+ try{
+  if(a=="approve"){await DB.addEx(s);await DB.status(id,"approved");toast(s.title+" is now live in the user app.")}
+  if(a=="unapprove"){const x=exs.find(y=>y.source_submission==id||y.name.toLowerCase()==s.title.toLowerCase());if(x)await DB.delEx(x.id);await DB.status(id,"new");toast("Removed from the user app.")}
+  if(a=="decline"){await DB.status(id,"declined");toast("Declined.")}
+  if(a=="resolve"){await DB.status(id,"resolved");toast("Marked resolved.")}
+  if(a=="reopen"){if(s.type=="exercise"){const x=exs.find(y=>y.source_submission==id);if(x)await DB.delEx(x.id)}await DB.status(id,"new");toast("Reopened.")}
+ }catch(er){toast("Action failed: "+(er.message||er))}
+ await load()}
+if(!CLOUD)$("#demoNote").classList.remove("hidden");
+addEventListener("pagehide",()=>{});
+</script>
+</body>
+</html>

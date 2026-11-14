@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FormFix AI: Real-time Form Coach</title>
+<meta name="description" content="AI form coach that tracks your body with your webcam and corrects your exercise technique.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231F5EFF'/%3E%3Cpath d='M10 55h20l12-35 18 60 12-25h18' fill='none' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" crossorigin="anonymous"></script>
+<style>
+:root{--bg:#EDF1F4;--card:#fff;--ink:#0E1B2A;--mut:#5B6B7B;--line:#D5DDE4;--acc:#1F5EFF;--onacc:#fff;--ok:#0B8F6B;--warn:#B86E00;--bad:#D92D3A}
+@media (prefers-color-scheme:dark){:root{--bg:#09121A;--card:#121E29;--ink:#E7EEF4;--mut:#93A4B4;--line:#23323F;--acc:#6D93FF;--onacc:#08111f;--ok:#32C79B;--warn:#E6A23C;--bad:#FF6370}}
+body{background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,sans-serif;margin:0}
+h1,h2,h3,.disp{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;letter-spacing:.01em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.btn{border:1px solid var(--line);border-radius:10px;padding:.5rem .9rem;font-weight:600;background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;gap:.4rem;align-items:center;justify-content:center}
+.btn:hover{border-color:var(--acc)}.btn:disabled{opacity:.45;cursor:not-allowed}.btn-s{padding:.3rem .65rem;font-size:.85rem}
+.btn-p,.tog[aria-pressed=true],.tab[aria-selected=true]{background:var(--acc);color:var(--onacc);border-color:var(--acc)}.btn-d{background:var(--bad);color:#fff;border-color:var(--bad)}
+.xc{cursor:pointer;text-align:left}.xc[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+.inp{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .75rem;background:var(--bg);color:var(--ink)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.mut{color:var(--mut)}.pill{border:1px solid currentColor;border-radius:99px;padding:.1rem .55rem;font-size:.75rem;font-weight:600}
+.bn{border-radius:12px;padding:.8rem 1rem;background:var(--card);border:1px solid var(--line);border-left:8px solid var(--line)}
+.bn[data-k=ok]{border-left-color:var(--ok)}.bn[data-k=warn]{border-left-color:var(--warn)}.bn[data-k=bad]{border-left-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--card))}
+.chip{background:rgba(8,16,24,.74);color:#fff;border-radius:99px;padding:.2rem .65rem;font-size:.8rem;font-weight:600}
+.risk-Low{color:var(--ok)}.risk-Moderate{color:var(--warn)}.risk-High{color:var(--bad)}li{margin:.25rem 0}
+#drawer{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s}#drawer.open{grid-template-rows:1fr}#drawer>div{overflow:hidden}
+@media (prefers-reduced-motion:reduce){#drawer{transition:none}}
+</style>
+</head>
+<body>
+<header class="card" style="border-radius:0;border-width:0 0 1px"><div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+ <span class="disp text-2xl mr-auto">FormFix AI</span>
+ <nav class="flex gap-1" role="tablist"><button class="btn tab" role="tab" data-tab="work" aria-selected="true">Workout</button><button class="btn tab" role="tab" data-tab="req" aria-selected="false">Request &amp; Feedback</button></nav></div></header>
+<div id="cfg" class="hidden"><div class="max-w-6xl mx-auto px-4 pt-3"><div class="bn" data-k="warn" role="status"><b>Demo mode.</b> <span class="mut text-sm">Cloud sync is off, so requests stay in this browser. Add your Supabase URL and anon key at the top of the script to enable it.</span></div></div></div>
+
+<main class="max-w-6xl mx-auto p-4 pb-8">
+<section id="work">
+ <h1 class="text-4xl mb-1">Choose your workout</h1>
+ <p class="mut mb-3">Real-time form coaching from your webcam. Frames are processed on your device and never uploaded.</p>
+ <div id="exGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"></div>
+ <div class="grid lg:grid-cols-3 gap-4">
+  <div class="lg:col-span-2 space-y-3">
+   <div id="box" class="card overflow-hidden relative bg-black" style="aspect-ratio:16/9">
+    <div class="absolute inset-0" style="transform:scaleX(-1)"><video id="vid" class="w-full h-full" playsinline muted></video><canvas id="cv" class="absolute inset-0 w-full h-full"></canvas></div>
+    <div id="idle" class="absolute inset-0 grid place-items-center text-center text-white/85 p-4"><div><div class="disp text-3xl">Camera is off</div><p class="text-sm">Press Start Camera, then choose Allow when your browser asks.</p></div></div>
+    <div class="absolute top-2 left-2 right-2 flex flex-wrap gap-1.5"><span class="chip" id="cStat">Idle</span><span class="chip" id="cA">—</span><span class="chip" id="cB">—</span></div>
+   </div>
+   <div id="err" class="bn hidden" data-k="bad" role="alert"></div>
+   <div class="flex flex-wrap gap-2">
+    <button class="btn btn-p" id="bCam">Start Camera</button>
+    <button class="btn tog" id="tSk" aria-pressed="true">Skeleton overlay</button>
+    <button class="btn" id="bReset">Reset counters</button>
+    <button class="btn hidden" id="bManual">Count a rep</button>
+   </div>
+   <details id="help" class="card p-4 text-sm"><summary class="cursor-pointer font-semibold text-base">How to allow camera access</summary>
+    <ol class="list-decimal pl-5 mt-2">
+     <li>Click <b>Start Camera</b>. Your browser shows a permission prompt, usually at the top left of the address bar.</li>
+     <li>Choose <b>Allow</b> (pick “Allow while visiting” if offered).</li>
+     <li>If you chose Block: click the camera or lock icon in the address bar, set <b>Camera</b> to Allow, then reload. In Safari: Safari menu, Settings, Websites, Camera.</li>
+     <li>On a phone: Settings, your browser, Camera, then allow access for this site.</li>
+     <li>Close other apps using the camera (Zoom, Teams, FaceTime).</li>
+     <li>The camera works only on <b>https://</b>, <b>localhost</b> or a file opened straight from your computer. In an embedded preview, open the file in its own tab.</li>
+    </ol></details>
+  </div>
+  <aside class="space-y-3">
+   <div id="fb" class="bn" data-k="idle" role="status" aria-live="polite"><div class="disp text-2xl" id="fbT">Ready</div><div class="mut text-sm" id="fbS">Pick an exercise and start the camera.</div></div>
+   <div class="grid grid-cols-2 gap-2 text-center">
+    <div class="card p-3"><div class="mut text-xs" id="cntLbl">Reps</div><div class="disp text-5xl" id="mReps">0</div></div>
+    <div class="card p-3"><div class="mut text-xs">Form accuracy</div><div class="disp text-5xl" id="mAcc">—</div></div>
+   </div>
+   <div class="card p-4 text-sm"><h2 class="text-xl" id="ruleT">How it’s judged</h2><ul class="mut list-disc pl-5" id="ruleL"></ul>
+    <p class="mut mt-2">Simple angle rules on 2D tracking, not a physio assessment. Stop if anything hurts.</p></div>
+  </aside>
+ </div>
+</section>
+
+<section id="req" hidden>
+ <h1 class="text-4xl mb-1">Request &amp; feedback</h1>
+ <p class="mut mb-4">Tell us what broke or what you want to train. The team reviews every submission.</p>
+ <div class="grid md:grid-cols-2 gap-4">
+  <form id="fBug" class="card p-4 space-y-3"><h2 class="text-2xl">Report a bug</h2>
+   <div><label class="text-sm font-semibold" for="bT">What went wrong?</label><input id="bT" class="inp" required maxlength="80" placeholder="Skeleton jumps when I turn side-on"></div>
+   <div><label class="text-sm font-semibold" for="bSev">How bad is it?</label><select id="bSev" class="inp"><option>Low: cosmetic</option><option selected>Medium: annoying</option><option>High: blocks my workout</option></select></div>
+   <div><label class="text-sm font-semibold" for="bD">What happened, step by step?</label><textarea id="bD" class="inp" rows="4" required placeholder="I chose Push-Up, started the camera, then..."></textarea></div>
+   <label class="flex gap-2 text-sm items-start"><input type="checkbox" id="bCtx" checked class="mt-1"><span>Attach session details: <span class="mut" id="ctxTxt"></span></span></label>
+   <button class="btn btn-p w-full" type="submit">Send bug report</button></form>
+  <form id="fEx" class="card p-4 space-y-3"><h2 class="text-2xl">Request a new exercise</h2>
+   <div><label class="text-sm font-semibold" for="xN">Exercise name</label><input id="xN" class="inp" required maxlength="40" placeholder="Write Your Workout You Want"></div>
+   <div><div class="text-sm font-semibold mb-1" id="muLbl">Target muscles</div><div class="flex flex-wrap gap-1.5" id="muscles" role="group" aria-labelledby="muLbl"></div></div>
+   <div><label class="text-sm font-semibold" for="xA">Best camera angle</label><select id="xA" class="inp"><option>Front</option><option>Side</option><option>Either</option></select></div>
+   <div><label class="text-sm font-semibold" for="xI">Special instructions</label><textarea id="xI" class="inp" rows="3" placeholder="Keep elbows pinned to your sides. Watch for swinging."></textarea></div>
+   <button class="btn btn-p w-full" type="submit">Send exercise request</button></form>
+ </div>
+ <div class="card p-4 mt-4"><h2 class="text-2xl">Your submissions</h2><ul id="mine" class="text-sm"></ul>
+  </div>
+</section>
+</main>
+
+<footer class="max-w-6xl mx-auto px-4 pb-8">
+ <button class="btn w-full justify-between" id="dBtn" aria-expanded="false" aria-controls="drawer"><span>How FormFix AI works (MIS 201)</span><span id="chev">▲</span></button>
+ <div id="drawer"><div><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-3">
+  <div class="card p-4"><h3 class="text-xl">Data</h3><p class="text-sm mut">Pre-trained pose model data, plus coach-labeled posture rules. Approved exercise requests become new movements to define.</p></div>
+  <div class="card p-4"><h3 class="text-xl">Model</h3><p class="text-sm mut">MediaPipe Pose finds 33 body landmarks in each camera frame. Rule logic turns joint angles into coaching cues.</p></div>
+  <div class="card p-4"><h3 class="text-xl">Output</h3><p class="text-sm mut">Live skeleton overlay, rep or hold counter, form accuracy score and written corrections.</p></div>
+  <div class="card p-4"><h3 class="text-xl">Feedback loop</h3><p class="text-sm mut">Bug reports and exercise requests go to the team’s review queue. Results can later tune thresholds and next week’s volume advice.</p></div>
+  <div class="card p-4 sm:col-span-2"><h3 class="text-xl">Humans</h3><p class="text-sm mut">You control the camera and can stop any time. Developers review every submission. Physical therapists should set the safety thresholds the coach enforces.</p></div>
+ </div></div></div>
+</footer>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 card px-4 py-2 text-sm font-semibold hidden z-30" style="bottom:1rem" role="status"></div>
+
+<script>
+/* ===== CONFIG: paste your Supabase project values here (Project Settings, API) ===== */
+const SUPABASE_URL="https://luzuflcmlekurbfhdmux.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_0h84fepK4jHnMudYJTQCKA_HChsSOjc";
+/* ================================================================================ */
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}},sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.remove("hidden");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add("hidden"),3200)}
+const vid=$("#vid"),cv=$("#cv"),cx=cv.getContext("2d");
+let PP=[];const sn=i=>PP[i].v>.5,A=(a,b,c)=>ang(PP[a],PP[b],PP[c]),avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const ang=(a,b,c)=>{const v=[a.x-b.x,a.y-b.y],w=[c.x-b.x,c.y-b.y];return Math.acos(Math.max(-1,Math.min(1,(v[0]*w[0]+v[1]*w[1])/(Math.hypot(...v)*Math.hypot(...w)||1))))*180/Math.PI};
+const leanOf=(sh,hp)=>Math.atan2(Math.abs(PP[sh].x-PP[hp].x),PP[hp].y-PP[sh].y)*180/Math.PI;
+const arms=()=>[[11,13,15],[12,14,16]].filter(s=>s.every(sn)),bodies=()=>[[11,23,27],[12,24,28]].filter(s=>s.every(sn));
+
+/* issues */
+const ISS={lean:{t:"Lower back check",s:"Your torso is leaning too far forward. Lift your chest and brace your core.",j:[11,12,23,24],pen:20},cave:{t:"Knees caving in",s:"Push your knees out over your toes.",j:[25,26],pen:15},sag:{t:"Hips sagging",s:"Squeeze your glutes and pull your ribs down.",j:[23,24],pen:20},pike:{t:"Hips too high",s:"Lower your hips so shoulders, hips and ankles form a line.",j:[23,24],pen:15},swing:{t:"Swinging",s:"Keep your torso still and elbows by your sides.",j:[11,12,23,24],pen:20}};
+const hipSag=b=>{const[s,h,a]=b,dx=PP[a].x-PP[s].x;if(Math.abs(dx)<20)return"sag";const ly=PP[s].y+(PP[h].x-PP[s].x)*(PP[a].y-PP[s].y)/dx;return PP[h].y>ly?"sag":"pike"};
+
+/* exercises: eval -> {m,x}, flags(mm) -> [issue ids], live(m,min) -> [kind,title,sub] */
+const BASE={
+squat:{n:"Squat",m:"Quads, glutes, core",r:"Moderate",tip:"Side-on or front, full body in view",kind:"rep",ml:"Knee",cfg:{down:145,top:155,goal:100,count:105},
+ rules:["A rep counts when your knee angle drops below about 105° and you stand back up past 155°.","Under 100° at the bottom is good depth.","Torso lean over 55° flags a lower back check.","From the front, knees much closer than your ankles flags knee cave."],
+ eval(){const L=[[23,25,27,11],[24,26,28,12]].filter(s=>sn(s[0])&&sn(s[1])&&sn(s[2]));if(!L.length)return null;const m=avg(L.map(s=>A(s[0],s[1],s[2]))),T=L.filter(s=>sn(s[3])),lean=T.length?avg(T.map(s=>leanOf(s[3],s[0]))):null;
+  const front=[11,12,25,26,27,28].every(sn)&&Math.abs(PP[11].x-PP[12].x)/cv.width>.1,ratio=front?Math.abs(PP[25].x-PP[26].x)/(Math.abs(PP[27].x-PP[28].x)||1):null;return{m,lean,ratio,x:"Torso lean "+(lean==null?"—":Math.round(lean)+"°")}},
+ flags(o){const f=[];if(o.lean!=null&&o.lean>55)f.push("lean");if(o.ratio!=null&&o.ratio<.75&&o.m<130)f.push("cave");return f},
+ live(m,mn){return mn<=100?["ok","Good depth!","Now drive up through your heels."]:m<125?["warn","Almost there","A little lower for full depth."]:["idle","Keep going","Control the descent."]},
+ shallow:"Too shallow, rep not counted"},
+pushup:{n:"Push-Up",m:"Chest, triceps, shoulders",r:"Low",tip:"Side-on, full body in view",kind:"rep",ml:"Elbow",cfg:{down:135,top:155,goal:95,count:105},
+ rules:["Film from the side so shoulder, hip and ankle are visible.","A rep counts when your elbow angle drops below about 105° and you press back past 155°.","Under 95° is full depth.","A body line under 160° flags sagging or piking hips."],
+ eval(){const a=arms();if(!a.length)return null;const m=avg(a.map(s=>A(s[0],s[1],s[2]))),b=bodies(),line=b.length?avg(b.map(s=>A(s[0],s[1],s[2]))):null;return{m,line,side:b.length?hipSag(b[0]):null,x:"Body line "+(line==null?"—":Math.round(line)+"°")}},
+ flags(o){return o.line!=null&&o.line<160?[o.side]:[]},
+ live(m,mn){return mn<=95?["ok","Full depth!","Press up, keep your body straight."]:m<120?["warn","Almost there","Lower your chest a little more."]:["idle","Keep going","Lower with control."]},
+ shallow:"Not deep enough, rep not counted"},
+plank:{n:"Plank",m:"Core, glutes, shoulders",r:"Low",tip:"Side-on, full body in view",kind:"hold",ml:"Body line",
+ rules:["Film from the side so shoulder, hip and ankle are visible.","The timer runs while your body is roughly horizontal.","A body line of 165° or more counts as a good hold.","Sagging or piking hips pause the good-hold time."]},
+curl:{n:"Curl",m:"Biceps, forearms",r:"Low",tip:"Front or side, arms in view",kind:"rep",ml:"Elbow",cfg:{down:140,top:155,goal:60,count:75},
+ rules:["A rep counts when your elbow angle drops below about 75° and you lower past 155°.","Under 60° means a full squeeze at the top.","Torso lean over 15° flags swinging."],
+ eval(){const a=arms();if(!a.length)return null;const m=avg(a.map(s=>A(s[0],s[1],s[2]))),T=[[11,23],[12,24]].filter(s=>s.every(sn)),lean=T.length?avg(T.map(s=>leanOf(s[0],s[1]))):null;return{m,lean,x:"Torso lean "+(lean==null?"—":Math.round(lean)+"°")}},
+ flags(o){return o.lean!=null&&o.lean>15?["swing"]:[]},
+ live(m,mn){return mn<=60?["ok","Squeeze at the top","Lower slowly."]:m<100?["warn","Curl a bit higher","Aim for a full squeeze."]:["idle","Lift with control","Keep elbows by your sides."]},
+ shallow:"Not a full curl, rep not counted"}};
+let custom=[],subs=[];
+/* ---------- data layer: Supabase (cloud) or this browser (demo fallback) ---------- */
+const CLOUD=!!(SUPABASE_URL&&SUPABASE_ANON_KEY&&window.supabase);
+const sb=CLOUD?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const mine=()=>ld("ff_mine",[]),rid=()=>crypto.randomUUID?crypto.randomUUID():"u"+Date.now()+Math.random().toString(16).slice(2);
+const DB={
+ async exercises(){let r;if(CLOUD){const{data,error}=await sb.from("exercises").select("id,name,muscles").order("created_at");if(error)throw error;r=data}else r=ld("ff_ex",[]);return r.map(x=>({id:x.id,n:x.name,muscles:x.muscles||[]}))},
+ async submit(row){if(CLOUD){const{error}=await sb.from("submissions").insert(row);if(error)throw error}else{const a=ld("ff_subs",[]);a.unshift({...row,created_at:new Date().toISOString()});sv("ff_subs",a)}},
+ async mySubs(){const ids=mine();if(!ids.length)return[];if(CLOUD){const{data,error}=await sb.rpc("get_my_submissions",{ids});if(error)throw error;return data||[]}return ld("ff_subs",[]).filter(x=>ids.includes(x.id))},
+ watch(cb){if(CLOUD)sb.channel("ff-user").on("postgres_changes",{event:"*",schema:"public",table:"exercises"},cb).subscribe();else addEventListener("storage",e=>{if(e.key&&e.key.startsWith("ff_"))cb()})}};
+const allEx=()=>{const o={...BASE};custom.forEach(c=>{if(/curl/i.test(c.n)){o[c.id]={...BASE.curl,n:c.n,m:(c.muscles||[]).join(", ")||BASE.curl.m,isNew:1}}else o[c.id]={n:c.n,m:(c.muscles||[]).join(", ")||"Full body",r:"Low",tip:"Skeleton tracking only",kind:"generic",isNew:1,ml:"Elbow",rules:["Automatic form rules for this exercise haven’t been written yet.","The skeleton and live joint angles still work.","Use Count a rep to keep your own tally."]}});return o};
+const S={ex:"squat",cam:false,stream:null,pose:null,busy:false,sk:true,phase:"top",m:null,minM:180,seen:new Set(),t0:0,reps:0,rs:[],hold:0,good:0,lastT:0,msg:""};
+
+/* UI helpers */
+function fb(k,t,s=""){const key=k+t+s;if(key===S.msg)return;S.msg=key;$("#fb").dataset.k=k;$("#fbT").textContent=t;$("#fbS").textContent=s}
+const stat=t=>$("#cStat").textContent=t;
+function showErr(t){const e=$("#err");e.textContent=t;e.classList.remove("hidden");$("#help").open=true}
+function metrics(){const E=allEx()[S.ex],h=E.kind=="hold";$("#cntLbl").textContent=h?"Good hold (s)":"Reps";$("#mReps").textContent=h?Math.round(S.good):S.reps;
+ $("#mAcc").textContent=h?(S.hold>1?Math.round(S.good/S.hold*100)+"%":"—"):(S.rs.length?Math.round(avg(S.rs))+"%":"—")}
+function resetM(){S.phase="top";S.m=null;S.seen=new Set();S.reps=0;S.rs=[];S.hold=0;S.good=0;metrics();const E=allEx()[S.ex];
+ $("#ruleT").textContent="How "+E.n+" is judged";$("#ruleL").innerHTML=E.rules.map(r=>`<li>${esc(r)}</li>`).join("");$("#bManual").classList.toggle("hidden",E.kind!="generic");
+ fb("idle","Ready",E.tip+". Start the camera, then begin.")}
+function grid(){const A=allEx(),had=S.ex;if(!A[S.ex])S.ex="squat";
+ $("#exGrid").innerHTML=Object.entries(A).map(([k,e])=>`<button class="card p-3 xc" data-ex="${esc(k)}" aria-pressed="${k==S.ex}"><div class="flex justify-between gap-1"><h2 class="text-2xl">${esc(e.n)}</h2>${e.isNew?'<span class="pill" style="color:var(--acc)">New</span>':""}</div><p class="mut text-sm">${esc(e.m)}</p><p class="text-sm font-semibold mt-1 risk-${e.r}">Injury risk: ${e.r}</p><p class="mut text-xs mt-1">${esc(e.tip)}</p></button>`).join("");
+ $$(".xc").forEach(b=>b.onclick=()=>{S.ex=b.dataset.ex;grid();resetM()});if(S.ex!==had)resetM()}
+
+/* pose + camera */
+async function loadPose(){if(S.pose)return;if(typeof Pose==="undefined")throw new Error("lib");
+ const p=new Pose({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`});
+ p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});p.onResults(onResults);
+ await Promise.race([p.initialize(),new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),30000))]);S.pose=p}
+async function startCam(){$("#err").classList.add("hidden");$("#bCam").disabled=true;
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showErr("This browser can’t open a camera on this page. Use a current Chrome, Edge, Firefox or Safari over https:// or localhost.");$("#bCam").disabled=false;return}
+ try{stat("Requesting camera…");S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:1280},height:{ideal:720}},audio:false});
+  vid.srcObject=S.stream;await vid.play();cv.width=vid.videoWidth;cv.height=vid.videoHeight;$("#box").style.aspectRatio=vid.videoWidth+"/"+vid.videoHeight;$("#idle").classList.add("hidden")}
+ catch(e){showErr({NotAllowedError:"Camera access was blocked. Click the camera or lock icon in your address bar, set Camera to Allow, then reload and press Start Camera again.",NotFoundError:"No camera was found on this device.",NotReadableError:"Another app is using your camera. Close it (Zoom, Teams, FaceTime) and try again.",SecurityError:"The browser blocked the camera on this page. Open the file in its own tab over https:// or localhost."}[e.name]||"Couldn’t start the camera ("+(e.name||"unknown error")+").");stat("Camera error");$("#bCam").disabled=false;return}
+ try{stat("Loading pose model…");fb("warn","Loading pose model","The first load downloads about 10 MB and can take several seconds.");await loadPose()}
+ catch(e){showErr("Couldn’t load the MediaPipe pose model from the jsDelivr CDN. Check your internet connection. Sandboxed or embedded previews can block the model download, so open this file directly in Chrome or Edge.");stopCam(1);return}
+ S.cam=true;S.lastT=performance.now();$("#bCam").textContent="Stop Camera";$("#bCam").className="btn btn-d";$("#bCam").disabled=false;stat("Tracking");resetM();requestAnimationFrame(frame)}
+function stopCam(keep){S.cam=false;if(S.stream)S.stream.getTracks().forEach(t=>t.stop());S.stream=null;vid.srcObject=null;cx.clearRect(0,0,cv.width,cv.height);$("#idle").classList.remove("hidden");$("#bCam").textContent="Start Camera";$("#bCam").className="btn btn-p";$("#bCam").disabled=false;stat("Idle");if(!keep)fb("idle","Camera stopped","Press Start Camera to continue.")}
+async function frame(){if(!S.cam)return;if(!S.busy&&vid.readyState>=2){S.busy=true;try{await S.pose.send({image:vid})}catch(e){}S.busy=false}requestAnimationFrame(frame)}
+$("#bCam").onclick=()=>S.cam?stopCam():startCam();
+$("#tSk").onclick=e=>{S.sk=!S.sk;e.target.setAttribute("aria-pressed",S.sk)};
+$("#bReset").onclick=()=>{resetM();toast("Counters reset.")};
+$("#bManual").onclick=()=>{S.reps++;metrics()};
+addEventListener("pagehide",()=>S.stream&&S.stream.getTracks().forEach(t=>t.stop()));
+
+/* tracking + rules */
+function onResults(r){const W=cv.width,H=cv.height;cx.clearRect(0,0,W,H);const L=r.poseLandmarks;
+ if(!L){stat("No body found");fb("warn","I can’t see you","Step back so your whole body is in the frame.");return}
+ PP=L.map(l=>({x:l.x*W,y:l.y*H,v:l.visibility??1}));const E=allEx()[S.ex],bad=new Set();stat("Tracking");
+ if(E.kind=="rep")repStep(E,bad);else if(E.kind=="hold")holdStep(bad);else genStep();
+ drawSk(bad)}
+function setChips(a,b){$("#cA").textContent=a;$("#cB").textContent=b}
+function repStep(E,bad){const o=E.eval();if(!o){setChips(E.ml+" —","—");fb("warn","Show your "+(S.ex=="squat"?"legs":"arms"),"Move so the key joints are fully in view.");return}
+ S.m=S.m==null?o.m:S.m*.6+o.m*.4;const m=S.m,c=E.cfg,now=performance.now();setChips(E.ml+" "+Math.round(m)+"°",o.x);
+ if(S.phase=="top"){if(m<c.down){S.phase="down";S.minM=m;S.seen=new Set();S.t0=now}else fb("idle","Ready","Begin when you’re ready.");return}
+ S.minM=Math.min(S.minM,m);const f=E.flags(o);f.forEach(i=>S.seen.add(i));
+ if(m>=c.top){S.phase="top";if(now-S.t0>=450)finish(E);return}
+ if(f.length){const i=ISS[f[0]];i.j.forEach(j=>bad.add(j));fb("bad",i.t,i.s)}else{const l=E.live(m,S.minM);fb(...l)}}
+function finish(E){if(S.minM>E.cfg.count){fb("warn",E.shallow,"Lowest angle was "+Math.round(S.minM)+"°. Aim for under "+E.cfg.goal+"°.");return}
+ let sc=100;const notes=[];if(S.minM>E.cfg.goal)sc-=5;S.seen.forEach(i=>{sc-=ISS[i].pen;notes.push(ISS[i].t.toLowerCase())});sc=Math.max(40,sc);
+ S.reps++;S.rs.push(sc);metrics();fb(notes.length?"warn":"ok","Rep "+S.reps+(notes.length?": form check":": clean"),notes.length?"Watch: "+notes.join(", ")+".":"Score "+sc+"%.")}
+function holdStep(bad){const b=bodies(),now=performance.now(),dt=Math.min(.25,(now-S.lastT)/1000);S.lastT=now;
+ if(!b.length){setChips("Body line —","—");fb("warn","Show your whole body","Turn side-on so shoulder, hip and ankle are visible.");return}
+ const line=avg(b.map(s=>A(s[0],s[1],s[2]))),flat=b.every(s=>Math.abs(PP[s[0]].y-PP[s[2]].y)<.35*Math.abs(PP[s[0]].x-PP[s[2]].x));setChips("Body line "+Math.round(line)+"°",Math.round(S.good)+" s held");
+ if(!flat){fb("idle","Get into plank","Hold a straight line on forearms or hands.");return}
+ S.hold+=dt;if(line>=165){S.good+=dt;fb("ok","Solid plank","Straight line. Keep breathing.")}else{const k=hipSag(b[0]),i=ISS[k];i.j.forEach(j=>bad.add(j));fb("bad",i.t,i.s)}metrics()}
+function genStep(){const a=arms(),L=[[23,25,27],[24,26,28]].filter(s=>s.every(sn));setChips("Elbow "+(a.length?Math.round(avg(a.map(s=>A(s[0],s[1],s[2]))))+"°":"—"),"Knee "+(L.length?Math.round(avg(L.map(s=>A(s[0],s[1],s[2]))))+"°":"—"));
+ fb("idle","Tracking only","The team hasn’t added form rules for this exercise yet. Use Count a rep.")}
+const BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32]];
+function drawSk(bad){if(!S.sk)return;cx.lineWidth=Math.max(3,cv.width/260);cx.lineCap="round";
+ BONES.forEach(([a,b])=>{if(PP[a].v>.4&&PP[b].v>.4){cx.beginPath();cx.moveTo(PP[a].x,PP[a].y);cx.lineTo(PP[b].x,PP[b].y);cx.strokeStyle=bad.has(a)||bad.has(b)?"#FF5A66":"#3DE0B4";cx.stroke()}});
+ if(PP[0].v>.4){cx.beginPath();cx.arc(PP[0].x,PP[0].y,cv.height*.03,0,7);cx.strokeStyle="#3DE0B4";cx.stroke()}
+ [11,12,13,14,15,16,23,24,25,26,27,28].forEach(i=>{if(PP[i].v>.4){cx.beginPath();cx.arc(PP[i].x,PP[i].y,bad.has(i)?cv.width/80:cv.width/190,0,7);cx.fillStyle=bad.has(i)?"#FF5A66":"#fff";cx.fill()}})}
+
+/* tabs + request hub (saved to localStorage for the admin panel) */
+function tab(t){["work","req"].forEach(x=>$("#"+x).hidden=x!==t);$$(".tab").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t));if(t=="req"){ctx();myList()}}
+$$(".tab").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+const ctxStr=()=>`exercise ${allEx()[S.ex].n}, camera ${S.cam?"live":"off"}, ${S.reps} reps`,ctx=()=>$("#ctxTxt").textContent=ctxStr();
+const MU=["Biceps","Triceps","Chest","Back","Shoulders","Core","Quads","Hamstrings","Glutes","Calves","Forearms"],picked=new Set();
+$("#muscles").innerHTML=MU.map(m=>`<button type="button" class="btn btn-s tog" aria-pressed="false">${m}</button>`).join("");
+$$("#muscles .tog").forEach(b=>b.onclick=()=>{const m=b.textContent;picked.has(m)?picked.delete(m):picked.add(m);b.setAttribute("aria-pressed",picked.has(m))});
+async function send(e,mk,done){e.preventDefault();const form=e.target,btn=e.submitter||form.querySelector("[type=submit]");const row=mk();if(!row)return;btn.disabled=true;row.id=rid();row.status="new";
+ try{await DB.submit(row);sv("ff_mine",[row.id,...mine()]);done();toast("Sent. The team will review it.");await refresh()}catch(err){toast("Couldn’t send. Check your connection and try again.")}btn.disabled=false}
+$("#fBug").onsubmit=e=>send(e,()=>({type:"bug",title:$("#bT").value.trim(),body:$("#bD").value.trim(),severity:$("#bSev").value,context:$("#bCtx").checked?ctxStr():null}),()=>{e.target.reset();ctx()});
+$("#fEx").onsubmit=e=>send(e,()=>{if(!picked.size){toast("Pick at least one target muscle.");return null}return{type:"exercise",title:$("#xN").value.trim(),muscles:[...picked],camera_angle:$("#xA").value,notes:$("#xI").value.trim()||null}},()=>{picked.clear();$$("#muscles .tog").forEach(b=>b.setAttribute("aria-pressed","false"));e.target.reset()});
+function myList(){const L={new:["Under review","warn"],approved:["Approved","ok"],resolved:["Fixed","ok"],declined:["Declined","mut"]},m=[...subs].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+ $("#mine").innerHTML=m.length?m.map(x=>{const l=L[x.status]||L.new;return`<li class="flex justify-between gap-2 py-2 border-b" style="border-color:var(--line)"><span><b>${esc(x.title)}</b><span class="mut text-xs block">${x.type=="bug"?"Bug report":"Exercise request"}</span></span><span class="pill self-center" style="color:var(--${l[1]})">${l[0]}</span></li>`}).join(""):'<li class="mut">Nothing yet. Your reports and requests appear here with their status.</li>'}
+async function refresh(){try{custom=await DB.exercises()}catch(e){}try{subs=await DB.mySubs()}catch(e){}grid();myList()}
+addEventListener("focus",refresh);
+$("#dBtn").onclick=e=>{const o=$("#drawer").classList.toggle("open");e.currentTarget.setAttribute("aria-expanded",o);$("#chev").textContent=o?"▼":"▲"};
+grid();resetM();myList();if(!CLOUD)$("#cfg").classList.remove("hidden");refresh();DB.watch(refresh);if(CLOUD)setInterval(refresh,30000);
+if(typeof Pose==="undefined")showErr("The MediaPipe library didn’t load from the jsDelivr CDN. Check your internet connection and reload.");
+</script>
+</body>
+</html>
